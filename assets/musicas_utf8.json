@@ -1,0 +1,16 @@
+﻿[
+  {
+    "id": "t1",
+    "title": "Música Teste",
+    "author": "Desenvolvedor",
+    "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    "duration": "03:45"
+  },
+  {
+    "id": "t2",
+    "title": "Faixa Alternativa",
+    "author": "Equipe Flutter",
+    "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    "duration": "04:20"
+  }
+]
