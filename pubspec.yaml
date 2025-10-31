@@ -1,7 +1,6 @@
 ﻿name: playlist_mp3_app
 description: "Aplicativo Flutter para download e reprodução de playlists MP3"
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -10,17 +9,21 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
   provider: ^6.1.5+1
   dio: ^5.9.0
+
+  # Áudio (versões compatíveis entre si)
   just_audio: ^0.10.5
   just_audio_background: ^0.0.1-beta.17
-  audio_session: ^0.2.2
+  audio_service: ^0.18.13
+  audio_session: ^0.1.21
+
   geolocator: ^14.0.2
   path_provider: ^2.1.5
   intl: ^0.20.2
   connectivity_plus: ^7.0.0
   hive: ^2.2.3
+  workmanager: ^0.9.0+3
 
 dev_dependencies:
   flutter_test:
@@ -28,8 +31,11 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
+flutter_icons:
+  android: true
+  image_path: assets/icon.png
+
 flutter:
   uses-material-design: true
-
   assets:
     - assets/musicas_safe.json
