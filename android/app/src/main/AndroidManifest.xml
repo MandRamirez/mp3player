@@ -18,10 +18,12 @@
 
         <!-- Flutter embedding v2 -->
         <meta-data android:name="flutterEmbedding" android:value="2"/>
-        <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme"/>
-        <meta-data android:name="io.flutter.app.android.SplashScreenUntilFirstFrame" android:value="true"/>
+        <meta-data android:name="io.flutter.embedding.android.NormalTheme"
+            android:resource="@style/NormalTheme"/>
+        <meta-data android:name="io.flutter.app.android.SplashScreenUntilFirstFrame"
+            android:value="true"/>
 
-        <!-- MainActivity (mesmo package do arquivo Java/Kotlin) -->
+        <!-- MainActivity: usar o atalho com ponto -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -36,10 +38,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Serviço foreground de reprodução (audio_service) -->
+        <!-- Serviço foreground do audio_service -->
         <service
             android:name="com.ryanheise.audioservice.AudioService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback"/>
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>
