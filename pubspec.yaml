@@ -1,4 +1,4 @@
-﻿name: playlist_mp3_app
+name: playlist_mp3_app
 description: "Aplicativo Flutter para download e reprodução de playlists MP3"
 publish_to: 'none'
 version: 1.0.0+1
@@ -13,10 +13,10 @@ dependencies:
   dio: ^5.9.0
 
   # Áudio (versões compatíveis entre si)
-  just_audio: ^0.10.5
-  just_audio_background: ^0.0.1-beta.17
-  audio_service: ^0.18.13
-  audio_session: ^0.1.21
+  just_audio: 0.9.37
+  just_audio_background: 0.0.1-beta.12
+  audio_service: 0.18.13
+  audio_session: 0.1.18
 
   geolocator: ^14.0.2
   path_provider: ^2.1.5
