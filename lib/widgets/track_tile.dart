@@ -4,6 +4,8 @@ import '../models/track.dart';
 class TrackTile extends StatelessWidget {
   final Track track;
   final bool isPlaying;
+  final String stateLabel;
+  final double downloadProgress; // 0..1
   final VoidCallback onPlay;
 
   const TrackTile({
@@ -11,57 +13,99 @@ class TrackTile extends StatelessWidget {
     required this.track,
     required this.onPlay,
     this.isPlaying = false,
+    this.stateLabel = '',
+    this.downloadProgress = 0.0,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // Cores baseadas no estado
+    final primaryColor = theme.colorScheme.primary;
+    final progressColor = theme.colorScheme.secondary;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      elevation: isPlaying ? 4 : 1,
-      child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: isPlaying
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            isPlaying ? Icons.play_arrow : Icons.music_note,
-            color: isPlaying
-                ? Theme.of(context).colorScheme.onPrimary
-                : Theme.of(context).colorScheme.onPrimaryContainer,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Semantics(
+        button: true,
+        label:
+            '${isPlaying ? 'Pausar' : 'Tocar'} ${track.title} de ${track.author}',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPlay,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                title: Text(
+                  track.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.author,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    if (stateLabel.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          stateLabel,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: primaryColor,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                leading: Icon(
+                  isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
+                  color: isPlaying ? primaryColor : null,
+                  size: 28,
+                ),
+                trailing: IconButton(
+                  tooltip: isPlaying ? 'Pausar' : 'Reproduzir',
+                  icon: Icon(
+                    isPlaying
+                        ? Icons.pause_circle_filled_rounded
+                        : Icons.play_circle_fill_rounded,
+                    color: isPlaying ? primaryColor : null,
+                    size: 36,
+                  ),
+                  onPressed: onPlay,
+                ),
+              ),
+
+              // Barra de progresso de download
+              if (downloadProgress > 0 && downloadProgress < 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: downloadProgress,
+                      minHeight: 6,
+                      color: progressColor,
+                      backgroundColor:
+                          progressColor.withOpacity(0.15),
+                    ),
+                  ),
+                ),
+
+              // Separador fino para itens mais longos
+              const Divider(height: 0),
+            ],
           ),
         ),
-        title: Text(
-          track.title,
-          style: TextStyle(
-            fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-            color: isPlaying 
-                ? Theme.of(context).colorScheme.primary
-                : null,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          track.author,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: IconButton(
-          icon: Icon(
-            isPlaying ? Icons.pause_circle : Icons.play_circle,
-            color: isPlaying 
-                ? Theme.of(context).colorScheme.primary
-                : null,
-          ),
-          iconSize: 32,
-          onPressed: onPlay,
-        ),
-        onTap: onPlay,
       ),
     );
   }
