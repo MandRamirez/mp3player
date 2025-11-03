@@ -189,6 +189,7 @@ class PlaylistProvider extends ChangeNotifier {
     tracks = List<Track>.from(list);
     notifyListeners();
   }
+  
 
   Future<void> play(int index) async {
     if (!_sessionReady) await _initAudioSession();

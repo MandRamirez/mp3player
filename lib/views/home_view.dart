@@ -14,7 +14,7 @@ class _HomeViewState extends State<HomeView> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PlaylistProvider>().loadPlaylist();
+      context.read<PlaylistProvider>();
     });
   }
 
