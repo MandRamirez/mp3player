@@ -136,7 +136,20 @@ class PlaylistProvider extends ChangeNotifier {
       bufferedPosition = d;
       notifyListeners();
     });
-    _procSub = _player.processingStateStream.listen((_) => notifyListeners());
+    _procSub = _player.processingStateStream.listen((state) {
+      // Auto-advance to next track when current one completes
+      if (state == ja.ProcessingState.completed) {
+        if (repeatMode == RepeatMode.one) {
+          // Replay current track
+          _player.seek(Duration.zero);
+          _player.play();
+        } else if (repeatMode == RepeatMode.all || _player.hasNext) {
+          // Go to next track or loop back to start
+          seekToNext();
+        }
+      }
+      notifyListeners();
+    });
     _seqSub = _player.sequenceStateStream.listen((seq) {
       currentIndex = seq?.currentIndex;
       duration = _player.duration;
@@ -306,6 +319,11 @@ class PlaylistProvider extends ChangeNotifier {
 
   Future<void> stop() async {
     await _player.stop();
+    notifyListeners();
+  }
+
+  Future<void> seek(Duration position) async {
+    await _player.seek(position);
     notifyListeners();
   }
 

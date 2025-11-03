@@ -9,10 +9,8 @@ class PlayerControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<PlaylistProvider>();
-    final isPlaying = provider.processing == ja.ProcessingState.ready && 
-                      provider.currentIndex != null;
-    final isPaused = provider.processing == ja.ProcessingState.ready && 
-                     provider.currentIndex == null;
+    final hasTrack = provider.currentIndex != null;
+    final isPlaying = provider.isPlaying; // Use the provider's isPlaying getter
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -32,7 +30,7 @@ class PlayerControls extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Progress bar
-            if (provider.currentIndex != null && provider.duration != null)
+            if (hasTrack && provider.duration != null)
               Column(
                 children: [
                   SliderTheme(
@@ -48,7 +46,9 @@ class PlayerControls extends StatelessWidget {
                     child: Slider(
                       value: provider.positionPercent,
                       onChanged: (value) {
-                        // TODO: Implement seek functionality
+                        // Seek to position
+                        final newPosition = provider.duration! * value;
+                        provider.seek(newPosition);
                       },
                     ),
                   ),
@@ -73,8 +73,7 @@ class PlayerControls extends StatelessWidget {
               ),
             
             // Now playing info
-            if (provider.currentIndex != null && 
-                provider.currentIndex! < provider.tracks.length)
+            if (hasTrack && provider.currentIndex! < provider.tracks.length)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Column(
@@ -123,12 +122,7 @@ class PlayerControls extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.skip_previous),
                   iconSize: 32,
-                  onPressed: provider.currentIndex != null && 
-                           provider.currentIndex! > 0
-                      ? () {
-                          // TODO: Implement previous track
-                        }
-                      : null,
+                  onPressed: hasTrack ? provider.seekToPrevious : null,
                 ),
                 const SizedBox(width: 8),
                 
@@ -145,10 +139,12 @@ class PlayerControls extends StatelessWidget {
                     ),
                     iconSize: 36,
                     onPressed: () {
-                      if (isPlaying) {
-                        provider.pause();
-                      } else if (provider.currentIndex != null) {
-                        provider.play(provider.currentIndex!);
+                      if (hasTrack) {
+                        if (isPlaying) {
+                          provider.pause();
+                        } else {
+                          provider.resume();
+                        }
                       } else if (provider.tracks.isNotEmpty) {
                         provider.play(0);
                       }
@@ -161,12 +157,7 @@ class PlayerControls extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.skip_next),
                   iconSize: 32,
-                  onPressed: provider.currentIndex != null && 
-                           provider.currentIndex! < provider.tracks.length - 1
-                      ? () {
-                          // TODO: Implement next track
-                        }
-                      : null,
+                  onPressed: hasTrack ? provider.seekToNext : null,
                 ),
                 const SizedBox(width: 8),
                 
@@ -199,9 +190,7 @@ class PlayerControls extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.stop),
                   iconSize: 28,
-                  onPressed: provider.currentIndex != null
-                      ? provider.stop
-                      : null,
+                  onPressed: hasTrack ? provider.stop : null,
                   tooltip: 'Stop',
                 ),
               ],
