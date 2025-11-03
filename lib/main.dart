@@ -3,6 +3,8 @@ import "package:playlist_mp3_app/views/home_view.dart";
 import "package:provider/provider.dart";
 import "package:just_audio_background/just_audio_background.dart";
 import "package:workmanager/workmanager.dart";
+import "package:hive/hive.dart";
+import "package:path_provider/path_provider.dart";
 
 import "providers/playlist_provider.dart";
 import "services/download_worker.dart";
@@ -10,8 +12,15 @@ import "services/download_worker.dart";
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializa WorkManager
-  await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+  // Inicializa Hive no isolate principal (usado pelo app para ler o progresso)
+  final appDir = await getApplicationDocumentsDirectory();
+  Hive.init(appDir.path);
+
+  // Inicializa WorkManager (para o worker de download em segundo plano)
+  await Workmanager().initialize(
+    callbackDispatcher,
+    isInDebugMode: false, // se quiser debugar, pode trocar para true
+  );
 
   // Sobe o app primeiro
   runApp(const MyApp());
@@ -28,7 +37,7 @@ Future<void> main() async {
         androidNotificationIcon: "mipmap/ic_launcher",
       );
     } catch (e) {
-      // Log opcional: print("JustAudioBackground.init falhou: $e");
+      // Opcional: debugPrint("JustAudioBackground.init falhou: $e");
     }
   });
 }
@@ -39,7 +48,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => PlaylistProvider())],
+      providers: [
+        ChangeNotifierProvider(create: (_) => PlaylistProvider()),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: "Playlist MP3 App",

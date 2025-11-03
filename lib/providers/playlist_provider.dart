@@ -2,14 +2,18 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:audio_session/audio_session.dart';
 import 'package:audio_service/audio_service.dart' show MediaItem;
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:hive/hive.dart';
+import 'package:workmanager/workmanager.dart';
 
 import '../models/track.dart';
+import '../services/download_worker.dart';
 
 enum PlaylistStatus { idle, loading, ready, error }
 
@@ -68,21 +72,42 @@ class PlaylistProvider extends ChangeNotifier {
   static const _listJson =
       'https://www.rafaelamorim.com.br/mobile2/musicas/list.json';
 
-  // Timer for position checking
+  // Timer para verificar posição (Easter Egg)
   Timer? _positionCheckTimer;
   static const _checkInterval = Duration(seconds: 30);
+
+  // --- ESTADO DE DOWNLOAD POR FAIXA (sincronizado com o Hive) ---
+  final Map<String, double> _downloadProgress = {}; // 0..1
+  final Map<String, bool> _downloadDone = {};
+  final Map<String, bool> _downloadError = {};
+
+  // Timer para polling de progresso de download
+  Timer? _downloadPollTimer;
+  static const _downloadPollInterval = Duration(seconds: 1);
 
   PlaylistProvider() {
     _wirePlayerStreams();
     _initAudioSession();
     _loadTracks();
     _startPositionCheckTimer();
+    _startDownloadPollTimer();
   }
+
+  // ---------------------------------------------------------------------------
+  // TIMERS
+  // ---------------------------------------------------------------------------
 
   void _startPositionCheckTimer() {
     _positionCheckTimer?.cancel();
     _positionCheckTimer = Timer.periodic(_checkInterval, (_) async {
       await _checkPositionAndReload();
+    });
+  }
+
+  void _startDownloadPollTimer() {
+    _downloadPollTimer?.cancel();
+    _downloadPollTimer = Timer.periodic(_downloadPollInterval, (_) async {
+      await _refreshDownloadStates();
     });
   }
 
@@ -107,7 +132,9 @@ class PlaylistProvider extends ChangeNotifier {
       if (dist <= 50) {
         final hasEasterEgg = tracks.any((t) => t.title.contains('Easter Egg'));
         if (!hasEasterEgg && status != PlaylistStatus.loading) {
-          if (kDebugMode) debugPrint('📍 Within campus range, reloading tracks...');
+          if (kDebugMode) {
+            debugPrint('📍 Within campus range, reloading tracks...');
+          }
           await reloadTracks();
         }
       }
@@ -115,6 +142,10 @@ class PlaylistProvider extends ChangeNotifier {
       if (kDebugMode) debugPrint('⚠️ Position check error: $e');
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // ÁUDIO / SESSÃO
+  // ---------------------------------------------------------------------------
 
   Future<void> _initAudioSession() async {
     try {
@@ -138,14 +169,14 @@ class PlaylistProvider extends ChangeNotifier {
       notifyListeners();
     });
     _procSub = _player.processingStateStream.listen((state) {
-      // Auto-advance to next track when current one completes
+      // Auto-advance para próxima faixa quando a atual terminar
       if (state == ja.ProcessingState.completed) {
         if (repeatMode == RepeatMode.one) {
-          // Replay current track
+          // Repetir faixa atual
           _player.seek(Duration.zero);
           _player.play();
         } else if (repeatMode == RepeatMode.all || _player.hasNext) {
-          // Go to next track or loop back to start
+          // Próxima faixa ou volta ao início
           seekToNext();
         }
       }
@@ -160,6 +191,10 @@ class PlaylistProvider extends ChangeNotifier {
       notifyListeners();
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // CARREGAMENTO DA PLAYLIST + EASTER EGG + AGENDA DE DOWNLOADS
+  // ---------------------------------------------------------------------------
 
   Future<void> _loadTracks() async {
     if (status == PlaylistStatus.loading) return;
@@ -239,10 +274,13 @@ class PlaylistProvider extends ChangeNotifier {
       } catch (_) {}
 
       tracks = fetched;
-      _originalTracks = List<Track>.from(fetched); // Save original
+      _originalTracks = List<Track>.from(fetched); // salva ordem original
       status = PlaylistStatus.ready;
-      
-      // Reset shuffle indices when tracks change
+
+      // Garante que cada faixa tenha um download agendado em segundo plano
+      await _ensureDownloadsScheduled();
+
+      // Se já estiver em modo shuffle, reembaralha a lista
       if (shuffleEnabled) {
         _shuffleTracks();
       }
@@ -254,10 +292,107 @@ class PlaylistProvider extends ChangeNotifier {
     }
   }
 
+  /// Garante que cada faixa tenha um download em segundo plano agendado
+  Future<void> _ensureDownloadsScheduled() async {
+    if (tracks.isEmpty) return;
+    try {
+      final box = await Hive.openBox('downloads');
+
+      for (final t in tracks) {
+        final id = t.id;
+        final done =
+            (box.get('${id}_done', defaultValue: false) as bool?) ?? false;
+
+        if (done) {
+          // Já baixado anteriormente
+          _downloadDone[id] = true;
+          _downloadProgress[id] = 1.0;
+          continue;
+        }
+
+        // Limpamos erros anteriores ao reagendar
+        box.put('${id}_error', false);
+        _downloadError[id] = false;
+        _downloadProgress[id] = 0.0;
+
+        // Nome único por tarefa
+        final uniqueName = 'download_${id.hashCode}';
+
+        await Workmanager().registerOneOffTask(
+          uniqueName,
+          taskDownload,
+          inputData: {
+            'url': t.url.toString(),
+            'id': id,
+          },
+          constraints: Constraints(
+            networkType: NetworkType.connected,
+          ),
+        );
+      }
+
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ Erro ao agendar downloads: $e');
+      }
+    }
+  }
+
+  /// Lê o Hive e atualiza o progresso/estado de download de cada faixa
+  Future<void> _refreshDownloadStates() async {
+    if (tracks.isEmpty) return;
+    try {
+      final box = await Hive.openBox('downloads');
+      bool changed = false;
+
+      for (final t in tracks) {
+        final id = t.id;
+
+        final done =
+            (box.get('${id}_done', defaultValue: false) as bool?) ?? false;
+        final progressBytes = box.get('${id}_progress') as int?;
+        final totalBytes = box.get('${id}_total') as int?;
+        final errorFlag =
+            (box.get('${id}_error', defaultValue: false) as bool?) ?? false;
+
+        double percent = 0.0;
+        if (totalBytes != null && totalBytes > 0 && progressBytes != null) {
+          percent = (progressBytes / totalBytes).clamp(0.0, 1.0);
+        }
+
+        if (_downloadDone[id] != done) {
+          _downloadDone[id] = done;
+          changed = true;
+        }
+        if (_downloadError[id] != errorFlag) {
+          _downloadError[id] = errorFlag;
+          changed = true;
+        }
+        if (_downloadProgress[id] != percent) {
+          _downloadProgress[id] = percent;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ Erro ao atualizar estado de downloads: $e');
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // SHUFFLE / REPEAT
+  // ---------------------------------------------------------------------------
+
   void _generateShuffleIndices() {
     final indices = List.generate(tracks.length, (i) => i);
     final random = Random();
-    
+
     // Fisher-Yates shuffle
     for (var i = indices.length - 1; i > 0; i--) {
       final j = random.nextInt(i + 1);
@@ -265,7 +400,7 @@ class PlaylistProvider extends ChangeNotifier {
       indices[i] = indices[j];
       indices[j] = temp;
     }
-    
+
     shuffledIndices = indices;
   }
 
@@ -276,6 +411,69 @@ class PlaylistProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  Future<void> toggleShuffle() async {
+    shuffleEnabled = !shuffleEnabled;
+
+    if (shuffleEnabled) {
+      // Salva ordem original
+      _originalTracks = List<Track>.from(tracks);
+      // Embaralha lista de faixas
+      _shuffleTracks();
+    } else {
+      // Restaura ordem original
+      tracks = List<Track>.from(_originalTracks);
+    }
+
+    // Não usamos o shuffle interno do just_audio
+    await _player.setShuffleModeEnabled(false);
+    notifyListeners();
+  }
+
+  void _shuffleTracks() {
+    final random = Random();
+    for (var i = tracks.length - 1; i > 0; i--) {
+      final j = random.nextInt(i + 1);
+      final temp = tracks[i];
+      tracks[i] = tracks[j];
+      tracks[j] = temp;
+    }
+  }
+
+  Future<void> setRepeatMode(RepeatMode m) async {
+    repeatMode = m;
+    switch (m) {
+      case RepeatMode.off:
+        await _player.setLoopMode(ja.LoopMode.off);
+        break;
+      case RepeatMode.one:
+        await _player.setLoopMode(ja.LoopMode.one);
+        break;
+      case RepeatMode.all:
+        await _player.setLoopMode(ja.LoopMode.all);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _applyModes() async {
+    await _player.setShuffleModeEnabled(shuffleEnabled);
+    switch (repeatMode) {
+      case RepeatMode.off:
+        await _player.setLoopMode(ja.LoopMode.off);
+        break;
+      case RepeatMode.one:
+        await _player.setLoopMode(ja.LoopMode.one);
+        break;
+      case RepeatMode.all:
+        await _player.setLoopMode(ja.LoopMode.all);
+        break;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // CONTROLE DE REPRODUÇÃO
+  // ---------------------------------------------------------------------------
 
   Future<void> play(int index) async {
     if (!_sessionReady) await _initAudioSession();
@@ -341,65 +539,9 @@ class PlaylistProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> toggleShuffle() async {
-    shuffleEnabled = !shuffleEnabled;
-    
-    if (shuffleEnabled) {
-      // Save original order
-      _originalTracks = List<Track>.from(tracks);
-      // Shuffle the tracks array itself
-      _shuffleTracks();
-    } else {
-      // Restore original order
-      tracks = List<Track>.from(_originalTracks);
-    }
-    
-    // Don't use just_audio's shuffle since we're doing it manually
-    await _player.setShuffleModeEnabled(false);
-    notifyListeners();
-  }
-
-  void _shuffleTracks() {
-    final random = Random();
-    // Fisher-Yates shuffle on the tracks list itself
-    for (var i = tracks.length - 1; i > 0; i--) {
-      final j = random.nextInt(i + 1);
-      final temp = tracks[i];
-      tracks[i] = tracks[j];
-      tracks[j] = temp;
-    }
-  }
-
-  Future<void> setRepeatMode(RepeatMode m) async {
-    repeatMode = m;
-    switch (m) {
-      case RepeatMode.off:
-        await _player.setLoopMode(ja.LoopMode.off);
-        break;
-      case RepeatMode.one:
-        await _player.setLoopMode(ja.LoopMode.one);
-        break;
-      case RepeatMode.all:
-        await _player.setLoopMode(ja.LoopMode.all);
-        break;
-    }
-    notifyListeners();
-  }
-
-  Future<void> _applyModes() async {
-    await _player.setShuffleModeEnabled(shuffleEnabled);
-    switch (repeatMode) {
-      case RepeatMode.off:
-        await _player.setLoopMode(ja.LoopMode.off);
-        break;
-      case RepeatMode.one:
-        await _player.setLoopMode(ja.LoopMode.one);
-        break;
-      case RepeatMode.all:
-        await _player.setLoopMode(ja.LoopMode.all);
-        break;
-    }
-  }
+  // ---------------------------------------------------------------------------
+  // GETTERS DE PROGRESSO (PLAYER + DOWNLOAD)
+  // ---------------------------------------------------------------------------
 
   double get bufferPercent {
     final d = duration;
@@ -415,12 +557,26 @@ class PlaylistProvider extends ChangeNotifier {
     return p / d.inMilliseconds;
   }
 
+  // Progresso de download (0..1) para uma faixa específica
+  double downloadProgressFor(String trackId) =>
+      _downloadProgress[trackId] ?? 0.0;
+
+  bool isDownloaded(String trackId) => _downloadDone[trackId] ?? false;
+
+  bool hasDownloadError(String trackId) =>
+      _downloadError[trackId] ?? false;
+
   ja.ProcessingState get processing => _player.processingState;
   bool get isPlaying => _player.playing;
+
+  // ---------------------------------------------------------------------------
+  // CICLO DE VIDA
+  // ---------------------------------------------------------------------------
 
   @override
   void dispose() {
     _positionCheckTimer?.cancel();
+    _downloadPollTimer?.cancel();
     _posSub?.cancel();
     _bufSub?.cancel();
     _procSub?.cancel();
