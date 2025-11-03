@@ -42,6 +42,7 @@ class PlaylistProvider extends ChangeNotifier {
   final ja.AudioPlayer _player = ja.AudioPlayer();
 
   List<Track> tracks = [];
+  List<Track> _originalTracks = [];
   PlaylistStatus status = PlaylistStatus.idle;
   String? error;
 
@@ -238,11 +239,12 @@ class PlaylistProvider extends ChangeNotifier {
       } catch (_) {}
 
       tracks = fetched;
+      _originalTracks = List<Track>.from(fetched); // Save original
       status = PlaylistStatus.ready;
       
       // Reset shuffle indices when tracks change
       if (shuffleEnabled) {
-        _generateShuffleIndices();
+        _shuffleTracks();
       }
     } catch (e) {
       error = 'Falha ao carregar playlist: $e';
@@ -343,13 +345,29 @@ class PlaylistProvider extends ChangeNotifier {
     shuffleEnabled = !shuffleEnabled;
     
     if (shuffleEnabled) {
-      _generateShuffleIndices();
+      // Save original order
+      _originalTracks = List<Track>.from(tracks);
+      // Shuffle the tracks array itself
+      _shuffleTracks();
     } else {
-      shuffledIndices = null;
+      // Restore original order
+      tracks = List<Track>.from(_originalTracks);
     }
     
-    await _player.setShuffleModeEnabled(shuffleEnabled);
+    // Don't use just_audio's shuffle since we're doing it manually
+    await _player.setShuffleModeEnabled(false);
     notifyListeners();
+  }
+
+  void _shuffleTracks() {
+    final random = Random();
+    // Fisher-Yates shuffle on the tracks list itself
+    for (var i = tracks.length - 1; i > 0; i--) {
+      final j = random.nextInt(i + 1);
+      final temp = tracks[i];
+      tracks[i] = tracks[j];
+      tracks[j] = temp;
+    }
   }
 
   Future<void> setRepeatMode(RepeatMode m) async {
