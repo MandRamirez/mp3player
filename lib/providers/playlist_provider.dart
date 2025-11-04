@@ -45,8 +45,6 @@ String _sanitizeToJsonArray(String raw) {
 class PlaylistProvider extends ChangeNotifier {
   final ja.AudioPlayer _player = ja.AudioPlayer();
 
-  ja.AudioPlayer getPlayer() => _player;
-
   List<Track> tracks = [];
   List<Track> _originalTracks = [];
   PlaylistStatus status = PlaylistStatus.idle;

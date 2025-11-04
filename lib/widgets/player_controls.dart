@@ -9,9 +9,8 @@ class PlayerControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<PlaylistProvider>();
-    final player = provider.getPlayer(); // Get audio player reference
     final hasTrack = provider.currentIndex != null;
-    final isPlaying = provider.isPlaying;
+    final isPlaying = provider.isPlaying; // Use the provider's isPlaying getter
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -30,70 +29,50 @@ class PlayerControls extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // --- Progress bar ---
-            if (hasTrack)
-              StreamBuilder<Duration>(
-                stream: player.positionStream,
-                builder: (context, positionSnapshot) {
-                  final position = positionSnapshot.data ?? Duration.zero;
-
-                  return StreamBuilder<Duration?>(
-                    stream: player.durationStream,
-                    builder: (context, durationSnapshot) {
-                      final duration = durationSnapshot.data ?? Duration.zero;
-                      final value = duration.inMilliseconds == 0
-                          ? 0.0
-                          : (position.inMilliseconds / duration.inMilliseconds)
-                              .clamp(0.0, 1.0);
-
-                      return Column(
-                        children: [
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              trackHeight: 2,
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 6,
-                              ),
-                              overlayShape: const RoundSliderOverlayShape(
-                                overlayRadius: 14,
-                              ),
-                            ),
-                            child: Slider(
-                              value: value,
-                              onChanged: (v) {
-                                if (duration.inMilliseconds > 0) {
-                                  final newPosition =
-                                      Duration(milliseconds: (duration.inMilliseconds * v).toInt());
-                                  provider.seek(newPosition);
-                                }
-                              },
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  _formatDuration(position),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                Text(
-                                  _formatDuration(duration),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                      );
-                    },
-                  );
-                },
+            // Progress bar
+            if (hasTrack && provider.duration != null)
+              Column(
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 14,
+                      ),
+                    ),
+                    child: Slider(
+                      value: provider.positionPercent,
+                      onChanged: (value) {
+                        // Seek to position
+                        final newPosition = provider.duration! * value;
+                        provider.seek(newPosition);
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(provider.position),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        Text(
+                          _formatDuration(provider.duration!),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
-
-            // --- Now playing info ---
+            
+            // Now playing info
             if (hasTrack && provider.currentIndex! < provider.tracks.length)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -120,12 +99,12 @@ class PlayerControls extends StatelessWidget {
                   ],
                 ),
               ),
-
-            // --- Control buttons ---
+            
+            // Control buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Shuffle
+                // Shuffle button
                 IconButton(
                   icon: Icon(
                     Icons.shuffle,
@@ -138,59 +117,51 @@ class PlayerControls extends StatelessWidget {
                   tooltip: 'Shuffle',
                 ),
                 const SizedBox(width: 8),
-
-                // Previous
+                
+                // Previous button
                 IconButton(
                   icon: const Icon(Icons.skip_previous),
                   iconSize: 32,
                   onPressed: hasTrack ? provider.seekToPrevious : null,
                 ),
                 const SizedBox(width: 8),
-
-                // Play / Pause
+                
+                // Play/Pause button
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Theme.of(context).colorScheme.primary,
                   ),
-                  child: StreamBuilder<ja.PlayerState>(
-                    stream: player.playerStateStream,
-                    builder: (context, snapshot) {
-                      final playerState = snapshot.data;
-                      final playing = playerState?.playing ?? isPlaying;
-
-                      return IconButton(
-                        icon: Icon(
-                          playing ? Icons.pause : Icons.play_arrow,
-                          color: Theme.of(context).colorScheme.onPrimary,
-                        ),
-                        iconSize: 36,
-                        onPressed: () {
-                          if (hasTrack) {
-                            if (playing) {
-                              provider.pause();
-                            } else {
-                              provider.resume();
-                            }
-                          } else if (provider.tracks.isNotEmpty) {
-                            provider.play(0);
-                          }
-                        },
-                      );
+                  child: IconButton(
+                    icon: Icon(
+                      isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+                    iconSize: 36,
+                    onPressed: () {
+                      if (hasTrack) {
+                        if (isPlaying) {
+                          provider.pause();
+                        } else {
+                          provider.resume();
+                        }
+                      } else if (provider.tracks.isNotEmpty) {
+                        provider.play(0);
+                      }
                     },
                   ),
                 ),
                 const SizedBox(width: 8),
-
-                // Next
+                
+                // Next button
                 IconButton(
                   icon: const Icon(Icons.skip_next),
                   iconSize: 32,
                   onPressed: hasTrack ? provider.seekToNext : null,
                 ),
                 const SizedBox(width: 8),
-
-                // Repeat
+                
+                // Repeat button
                 IconButton(
                   icon: Icon(
                     provider.repeatMode == RepeatMode.off
@@ -214,8 +185,8 @@ class PlayerControls extends StatelessWidget {
                   tooltip: 'Repeat',
                 ),
                 const SizedBox(width: 8),
-
-                // Stop
+                
+                // Stop button
                 IconButton(
                   icon: const Icon(Icons.stop),
                   iconSize: 28,
