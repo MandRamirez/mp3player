@@ -32,6 +32,8 @@ Aplicativo Flutter para reprodução de músicas MP3 com downloads em segundo pl
 - Mensagens de erro amigáveis
 - Suporte a leitores de tela
 
+![Captura da Página principal](Captura.jpeg)
+
 ## Dependências Principais
 - just_audio
 - audio_service
