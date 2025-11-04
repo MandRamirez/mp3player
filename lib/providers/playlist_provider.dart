@@ -14,12 +14,13 @@ import 'package:workmanager/workmanager.dart';
 
 import '../models/track.dart';
 import '../services/download_worker.dart';
+import '../l10n/app_strings.dart';
 
 enum PlaylistStatus { idle, loading, ready, error }
 
 enum RepeatMode { off, one, all }
 
-// --- sanitização do JSON remoto ---
+// Normaliza o conteúdo remoto para um array JSON válido
 String _sanitizeToJsonArray(String raw) {
   var s = raw
       .replaceAll('\uFEFF', '')
@@ -72,16 +73,15 @@ class PlaylistProvider extends ChangeNotifier {
   static const _listJson =
       'https://www.rafaelamorim.com.br/mobile2/musicas/list.json';
 
-  // Timer para verificar posição (Easter Egg)
+  // Poll de localização para acionar o Easter Egg
   Timer? _positionCheckTimer;
   static const _checkInterval = Duration(seconds: 30);
 
-  // --- ESTADO DE DOWNLOAD POR FAIXA (sincronizado com o Hive) ---
+  // Estado de download por faixa (sincronizado com Hive)
   final Map<String, double> _downloadProgress = {}; // 0..1
   final Map<String, bool> _downloadDone = {};
   final Map<String, bool> _downloadError = {};
 
-  // Timer para polling de progresso de download
   Timer? _downloadPollTimer;
   static const _downloadPollInterval = Duration(seconds: 1);
 
@@ -133,13 +133,13 @@ class PlaylistProvider extends ChangeNotifier {
         final hasEasterEgg = tracks.any((t) => t.title.contains('Easter Egg'));
         if (!hasEasterEgg && status != PlaylistStatus.loading) {
           if (kDebugMode) {
-            debugPrint('📍 Within campus range, reloading tracks...');
+            debugPrint('Dentro da área do campus, recarregando playlist.');
           }
           await reloadTracks();
         }
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Position check error: $e');
+      if (kDebugMode) debugPrint('Position check error: $e');
     }
   }
 
@@ -154,7 +154,7 @@ class PlaylistProvider extends ChangeNotifier {
       await _player.setVolume(1.0);
       _sessionReady = true;
     } catch (e, st) {
-      if (kDebugMode) debugPrint('⚠️ AudioSession init: $e\n$st');
+      if (kDebugMode) debugPrint('AudioSession init error: $e\n$st');
       _sessionReady = true;
     }
   }
@@ -169,14 +169,11 @@ class PlaylistProvider extends ChangeNotifier {
       notifyListeners();
     });
     _procSub = _player.processingStateStream.listen((state) {
-      // Auto-advance para próxima faixa quando a atual terminar
       if (state == ja.ProcessingState.completed) {
         if (repeatMode == RepeatMode.one) {
-          // Repetir faixa atual
           _player.seek(Duration.zero);
           _player.play();
         } else if (repeatMode == RepeatMode.all || _player.hasNext) {
-          // Próxima faixa ou volta ao início
           seekToNext();
         }
       }
@@ -193,7 +190,7 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // CARREGAMENTO DA PLAYLIST + EASTER EGG + AGENDA DE DOWNLOADS
+  // CARREGAMENTO DE PLAYLIST / EASTER EGG / DOWNLOADS
   // ---------------------------------------------------------------------------
 
   Future<void> _loadTracks() async {
@@ -240,7 +237,7 @@ class PlaylistProvider extends ChangeNotifier {
           })
           .toList(growable: true);
 
-      // Easter egg (50 m do campus)
+      // Easter egg a 50m do campus
       try {
         var perm = await Geolocator.checkPermission();
         if (perm == LocationPermission.denied) {
@@ -268,31 +265,28 @@ class PlaylistProvider extends ChangeNotifier {
                 url: Uri.parse(eggUrl),
               ),
             );
-            if (kDebugMode) debugPrint('🥚 Easter egg added!');
+            if (kDebugMode) debugPrint('Easter egg adicionado à playlist.');
           }
         }
       } catch (_) {}
 
       tracks = fetched;
-      _originalTracks = List<Track>.from(fetched); // salva ordem original
+      _originalTracks = List<Track>.from(fetched);
       status = PlaylistStatus.ready;
 
-      // Garante que cada faixa tenha um download agendado em segundo plano
       await _ensureDownloadsScheduled();
 
-      // Se já estiver em modo shuffle, reembaralha a lista
       if (shuffleEnabled) {
         _shuffleTracks();
       }
     } catch (e) {
-      error = 'Falha ao carregar playlist: $e';
+      error = '${AppStrings.errorPlaylistLoad}: $e';
       status = PlaylistStatus.error;
     } finally {
       notifyListeners();
     }
   }
 
-  /// Garante que cada faixa tenha um download em segundo plano agendado
   Future<void> _ensureDownloadsScheduled() async {
     if (tracks.isEmpty) return;
     try {
@@ -304,18 +298,15 @@ class PlaylistProvider extends ChangeNotifier {
             (box.get('${id}_done', defaultValue: false) as bool?) ?? false;
 
         if (done) {
-          // Já baixado anteriormente
           _downloadDone[id] = true;
           _downloadProgress[id] = 1.0;
           continue;
         }
 
-        // Limpamos erros anteriores ao reagendar
         box.put('${id}_error', false);
         _downloadError[id] = false;
         _downloadProgress[id] = 0.0;
 
-        // Nome único por tarefa
         final uniqueName = 'download_${id.hashCode}';
 
         await Workmanager().registerOneOffTask(
@@ -334,12 +325,11 @@ class PlaylistProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('⚠️ Erro ao agendar downloads: $e');
+        debugPrint('Erro ao agendar downloads: $e');
       }
     }
   }
 
-  /// Lê o Hive e atualiza o progresso/estado de download de cada faixa
   Future<void> _refreshDownloadStates() async {
     if (tracks.isEmpty) return;
     try {
@@ -380,7 +370,7 @@ class PlaylistProvider extends ChangeNotifier {
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('⚠️ Erro ao atualizar estado de downloads: $e');
+        debugPrint('Erro ao atualizar estado de downloads: $e');
       }
     }
   }
@@ -393,7 +383,6 @@ class PlaylistProvider extends ChangeNotifier {
     final indices = List.generate(tracks.length, (i) => i);
     final random = Random();
 
-    // Fisher-Yates shuffle
     for (var i = indices.length - 1; i > 0; i--) {
       final j = random.nextInt(i + 1);
       final temp = indices[i];
@@ -416,16 +405,12 @@ class PlaylistProvider extends ChangeNotifier {
     shuffleEnabled = !shuffleEnabled;
 
     if (shuffleEnabled) {
-      // Salva ordem original
       _originalTracks = List<Track>.from(tracks);
-      // Embaralha lista de faixas
       _shuffleTracks();
     } else {
-      // Restaura ordem original
       tracks = List<Track>.from(_originalTracks);
     }
 
-    // Não usamos o shuffle interno do just_audio
     await _player.setShuffleModeEnabled(false);
     notifyListeners();
   }
@@ -499,10 +484,10 @@ class PlaylistProvider extends ChangeNotifier {
       await _applyModes();
       await _player.play();
     } on SocketException catch (e) {
-      error = 'Sem conexão: $e';
+      error = '${AppStrings.errorNetwork}: $e';
       notifyListeners();
     } catch (e) {
-      error = 'Falha ao iniciar reprodução: $e';
+      error = '${AppStrings.errorPlaybackStart}: $e';
       notifyListeners();
     }
   }
@@ -540,7 +525,7 @@ class PlaylistProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // GETTERS DE PROGRESSO (PLAYER + DOWNLOAD)
+  // GETTERS / ESTADO EXPOSTO
   // ---------------------------------------------------------------------------
 
   double get bufferPercent {
@@ -557,7 +542,6 @@ class PlaylistProvider extends ChangeNotifier {
     return p / d.inMilliseconds;
   }
 
-  // Progresso de download (0..1) para uma faixa específica
   double downloadProgressFor(String trackId) =>
       _downloadProgress[trackId] ?? 0.0;
 
