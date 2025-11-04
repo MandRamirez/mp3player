@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart' as ja;
 import '../providers/playlist_provider.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/player_controls.dart';
+import '../l10n/app_strings.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -33,7 +34,6 @@ class _HomeViewState extends State<HomeView> {
   Widget build(BuildContext context) {
     final provider = context.watch<PlaylistProvider>();
 
-    // Mantido por compatibilidade, mas hoje a ordem é dada pelo próprio `tracks`
     List<int> getDisplayIndices() {
       if (!provider.shuffleEnabled || provider.shuffledIndices == null) {
         return List.generate(provider.tracks.length, (i) => i);
@@ -43,10 +43,11 @@ class _HomeViewState extends State<HomeView> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Playlist MP3'),
+        title: const Text(AppStrings.homeTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: AppStrings.refreshTooltip,
             onPressed: () {
               _refreshIndicatorKey.currentState?.show();
             },
@@ -79,7 +80,7 @@ class _HomeViewState extends State<HomeView> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              provider.error ?? 'Erro',
+                              provider.error ?? AppStrings.errorDefault,
                               textAlign: TextAlign.center,
                               style: const TextStyle(fontSize: 16),
                             ),
@@ -87,7 +88,7 @@ class _HomeViewState extends State<HomeView> {
                             ElevatedButton.icon(
                               onPressed: reloadTracks,
                               icon: const Icon(Icons.refresh),
-                              label: const Text('Tentar novamente'),
+                              label: const Text(AppStrings.retryButton),
                             ),
                           ],
                         ),
@@ -120,7 +121,7 @@ class _HomeViewState extends State<HomeView> {
                                   ),
                                   const SizedBox(height: 16),
                                   const Text(
-                                    'Nenhuma música disponível',
+                                    AppStrings.noTracks,
                                     style: TextStyle(fontSize: 16),
                                   ),
                                 ],
@@ -140,7 +141,6 @@ class _HomeViewState extends State<HomeView> {
                                 provider.currentIndex == trackIndex;
                             final isCurrent = isPlaying;
 
-                            // --- ESTADO DE DOWNLOAD ---
                             final progress =
                                 provider.downloadProgressFor(track.id);
                             final downloaded =
@@ -148,28 +148,26 @@ class _HomeViewState extends State<HomeView> {
                             final hasError =
                                 provider.hasDownloadError(track.id);
 
-                            // Buffer da faixa atual (streaming progressivo)
                             final isBuffering = isCurrent &&
                                 provider.processing ==
                                     ja.ProcessingState.buffering;
 
-                            // Monta o label de estado mostrado no item
                             String stateLabel;
                             if (hasError) {
-                              stateLabel = 'Erro no download';
+                              stateLabel = AppStrings.stateDownloadingError;
                             } else if (isCurrent && isBuffering) {
-                              stateLabel = 'Aguardando buffer...';
+                              stateLabel = AppStrings.stateBuffering;
                             } else if (isCurrent && provider.isPlaying) {
-                              stateLabel = 'Reproduzindo';
+                              stateLabel = AppStrings.statePlaying;
                             } else if (isCurrent &&
                                 !provider.isPlaying &&
                                 downloaded) {
-                              stateLabel = 'Pausado';
+                              stateLabel = AppStrings.statePaused;
                             } else if (progress > 0 && progress < 1) {
                               stateLabel =
-                                  'Baixando ${(progress * 100).toStringAsFixed(0)}%';
+                                  AppStrings.downloadingPercent(progress * 100);
                             } else if (downloaded) {
-                              stateLabel = 'Baixado';
+                              stateLabel = AppStrings.stateDownloaded;
                             } else {
                               stateLabel = '';
                             }

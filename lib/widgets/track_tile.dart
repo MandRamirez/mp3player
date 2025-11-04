@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../models/track.dart';
+import '../l10n/app_strings.dart';
 
 class TrackTile extends StatelessWidget {
   final Track track;
@@ -21,7 +23,6 @@ class TrackTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Cores baseadas no estado
     final primaryColor = theme.colorScheme.primary;
     final progressColor = theme.colorScheme.secondary;
 
@@ -31,8 +32,9 @@ class TrackTile extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Semantics(
         button: true,
-        label:
-            '${isPlaying ? 'Pausar' : 'Tocar'} ${track.title} de ${track.author}',
+        label: isPlaying
+            ? AppStrings.pauseTrackLabel(track.title, track.author)
+            : AppStrings.playTrackLabel(track.title, track.author),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onPlay,
@@ -68,12 +70,15 @@ class TrackTile extends StatelessWidget {
                   ],
                 ),
                 leading: Icon(
-                  isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
+                  isPlaying
+                      ? Icons.equalizer_rounded
+                      : Icons.music_note_rounded,
                   color: isPlaying ? primaryColor : null,
                   size: 28,
                 ),
                 trailing: IconButton(
-                  tooltip: isPlaying ? 'Pausar' : 'Reproduzir',
+                  tooltip:
+                      isPlaying ? AppStrings.pauseLabel : AppStrings.playLabel,
                   icon: Icon(
                     isPlaying
                         ? Icons.pause_circle_filled_rounded
@@ -84,8 +89,6 @@ class TrackTile extends StatelessWidget {
                   onPressed: onPlay,
                 ),
               ),
-
-              // Barra de progresso de download
               if (downloadProgress > 0 && downloadProgress < 1)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -95,13 +98,10 @@ class TrackTile extends StatelessWidget {
                       value: downloadProgress,
                       minHeight: 6,
                       color: progressColor,
-                      backgroundColor:
-                          progressColor.withOpacity(0.15),
+                      backgroundColor: progressColor.withOpacity(0.15),
                     ),
                   ),
                 ),
-
-              // Separador fino para itens mais longos
               const Divider(height: 0),
             ],
           ),

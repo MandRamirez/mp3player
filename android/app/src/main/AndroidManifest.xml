@@ -2,15 +2,20 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="br.edu.ifsul.playlist_mp3_app">
 
-    <!-- Permissões -->
+    <!-- Permissões básicas -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Localização para o Easter Egg -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Notificações (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Foreground service para playback -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Recomendado ao alvo SDK 34+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
@@ -18,9 +23,20 @@
         android:label="playlist_mp3_app"
         android:icon="@mipmap/launcher_icon">
 
-        <!-- Activity principal: usar a Activity do audio_service -->
+        <!-- Flutter embedding v2 -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+        <meta-data
+            android:name="io.flutter.embedding.android.NormalTheme"
+            android:resource="@style/NormalTheme" />
+        <meta-data
+            android:name="io.flutter.app.android.SplashScreenUntilFirstFrame"
+            android:value="true" />
+
+        <!-- Activity principal do app (extende AudioServiceFragmentActivity em MainActivity.kt) -->
         <activity
-            android:name="com.ryanheise.audioservice.AudioServiceActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
@@ -32,21 +48,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <!-- Flutter embedding v2 -->
-            <meta-data
-                android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme" />
-            <meta-data
-                android:name="flutterEmbedding"
-                android:value="2" />
-            <!-- Opcional: splash antigo até o primeiro frame -->
-            <meta-data
-                android:name="io.flutter.app.android.SplashScreenUntilFirstFrame"
-                android:value="true" />
         </activity>
 
-        <!-- Serviço de áudio em foreground (background playback) -->
+        <!-- Serviço de áudio em foreground (mantém playback com app em background) -->
         <service
             android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"
@@ -57,7 +61,7 @@
             </intent-filter>
         </service>
 
-        <!-- Receiver para botões de mídia (fone de ouvido, Bluetooth, etc.) -->
+        <!-- Receiver para botões de mídia (headset, bluetooth, etc) -->
         <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"
             android:exported="true"
